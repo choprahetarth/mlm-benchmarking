@@ -68,7 +68,7 @@ print(json.dumps(next(iter(hotpotqa_dataset)), indent=1))
 samples = list(hotpotqa_dataset.take(100))
 
 # Save the samples as a JSON file
-with open('aokvqa_repurposed.json', 'w') as f:
+with open('data/aokvqa_repurposed.json', 'w') as f:
     json.dump(samples, f, indent=1)
 
 # %%
