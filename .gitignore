@@ -1,0 +1,28 @@
+# Ignore operating system files
+.DS_Store
+Thumbs.db
+
+# Ignore IDE and editor files
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Ignore build and compilation files
+node_modules/
+build/
+dist/
+target/
+
+# Ignore logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# Ignore JSON-like string files (like the one you provided)
+*.json
+*.txt
+
+ReAct/output.html
+ReAct/aokvqa_repurpsoed.json
