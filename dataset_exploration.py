@@ -33,6 +33,7 @@ image.show()
 
 
 
+
 #'image', 'question_id', 'question', 'choices', 'correct_choice_idx', 'direct_answers', 'difficult_direct_answer', 'rationales'
 
 # - image: image data
@@ -181,5 +182,67 @@ print(next(iter(dataset)))
 
 #%%
 
+from datasets import load_dataset
+
+dataset = load_dataset("merve/vqav2-small",split='validation',  trust_remote_code=True , streaming=True)
+print(next(iter(dataset)))
+
 
 #%%
+
+from openpyxl.drawing.image import Image as openpyxl_image
+from openpyxl import Workbook
+
+import pandas as pd
+from PIL import Image
+import numpy as np
+from io import BytesIO
+from openpyxl.drawing.image import Image as openpyxl_image
+from openpyxl import Workbook
+
+# Load the dataset
+dataset = load_dataset("HuggingFaceM4/AdVQA",split='validation',  trust_remote_code=True , streaming=True)
+
+# Initialize an empty list for samples
+samples = []
+
+# Create an iterator from the dataset
+dataset_iterator = iter(dataset)
+
+# Get 10 unique samples
+for _ in range(10):
+    samples.append(next(dataset_iterator))
+
+# Create an Excel workbook
+wb = Workbook()
+ws = wb.active
+ws.title = "QA Data"
+
+# Loop through the samples
+for i, sample in enumerate(samples):
+    # Get the image, question, and answer
+    image = sample['image']  # Assuming this is already a PIL Image object
+    question = sample['question']
+    answer = sample['answers'][0]['answer']
+
+    # Resize the image to 250x250 pixels
+    image = image.resize((250, 250))
+
+    # Save the image temporarily in memory as bytes
+    img_buffer = BytesIO()
+    image.save(img_buffer, format='PNG')
+    img_buffer.seek(0)
+
+    # Insert question and answer into the worksheet
+    ws.cell(row=i + 1, column=1, value=question)
+    ws.cell(row=i + 1, column=2, value=answer)
+
+    # Insert the image into the worksheet
+    img_to_insert = openpyxl_image(img_buffer)
+    img_to_insert.anchor = f'C{i + 1}'  # Position the image in the appropriate cell
+    ws.add_image(img_to_insert)
+
+# Save the Excel workbook
+wb.save('answers.xlsx')
+
+# %%

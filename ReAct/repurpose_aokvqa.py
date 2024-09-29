@@ -39,6 +39,7 @@ def transform_to_hotpotqa(example):
     choices = example['choices']
     answer = example['choices'][example['correct_choice_idx']]
     rationales = example['rationales']
+    direct_answers = example['direct_answers']
 
     # Convert PIL Image to base64 format
     buffered = io.BytesIO()
@@ -51,13 +52,14 @@ def transform_to_hotpotqa(example):
     hotpotqa_example = {
         'question': question,
         'answer': answer,
+        'direct_answers':direct_answers,
         'context': context  # Now the context is the base64-encoded image
     }
 
     return hotpotqa_example
-
+#%%
 # # Apply the transformation to the dataset and remove the 'image' column
-hotpotqa_dataset = dataset.map(transform_to_hotpotqa, remove_columns=['image','question_id', 'rationales', 'difficult_direct_answer', 'correct_choice_idx', 'direct_answers', 'choices'])
+hotpotqa_dataset = dataset.map(transform_to_hotpotqa, remove_columns=['image','question_id', 'rationales', 'difficult_direct_answer', 'correct_choice_idx', 'choices'])
 #%%
 
 # # Print the first example of the transformed dataset
@@ -68,7 +70,55 @@ print(json.dumps(next(iter(hotpotqa_dataset)), indent=1))
 samples = list(hotpotqa_dataset.take(100))
 
 # Save the samples as a JSON file
-with open('data/aokvqa_repurposed.json', 'w') as f:
+with open('./data/aokvqa_repurposed.json', 'w') as f:
     json.dump(samples, f, indent=1)
+
+# %%
+
+import pandas as pd
+from openpyxl import Workbook, load_workbook
+from openpyxl.drawing.image import Image
+from io import BytesIO
+import random
+from datasets import load_dataset
+
+
+# Load the dataset with val split and take 25 random samples
+dataset = load_dataset("HuggingFaceM4/A-OKVQA", split='validation', trust_remote_code=True, streaming=True)
+dataset = dataset.shuffle(seed=12)  # Shuffle the dataset
+val_dataset = dataset.map(transform_to_hotpotqa, remove_columns=['image','question_id', 'rationales', 'difficult_direct_answer', 'correct_choice_idx', 'choices'])
+val_samples = list(val_dataset.take(25))
+
+# Create a DataFrame from the samples
+df = pd.DataFrame(val_samples)
+
+# Create an Excel file
+wb = Workbook()
+ws = wb.active
+
+# Write the header
+for col, header in enumerate(df.columns):
+    ws.cell(row=1, column=col + 1, value=header)
+
+# Write the data
+for row, (_, row_data) in enumerate(df.iterrows()):
+    for col, value in enumerate(row_data):
+        if col == 3:  # Assuming column index 2 is the image column
+            # Decode the base64 string and save it as an image files
+            image_data = base64.b64decode(value)
+            image_stream = BytesIO(image_data)
+            img = Image(image_stream)
+
+            # Set the image size to 500x500 pixels
+            img.width = 250
+            img.height = 250
+
+            # Insert the image into the cell
+            ws.add_image(img, ws.cell(row=row + 2, column=col + 1).coordinate)
+        else:
+            ws.cell(row=row + 2, column=col + 1, value=value)
+
+# Save the Excel file
+wb.save("output_val.xlsx")
 
 # %%

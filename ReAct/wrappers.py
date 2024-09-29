@@ -5,6 +5,7 @@ import numpy as np
 import re
 import string
 from collections import Counter
+import ast
 
     
 DATA_DIR = "data"
@@ -136,7 +137,6 @@ class HotPotQAWrapper(gym.Wrapper):
   
   def __len__(self):
     return len(self.data)
-  
 
 class HotPotQAWrapperImage(gym.Wrapper):
   def __init__(self, env, split):
@@ -185,9 +185,10 @@ class HotPotQAWrapperImage(gym.Wrapper):
       return {'reward': em, 'em': em, 'f1': f1}
     return {'reward': 0, 'em': 0, 'f1': 0}
 
-  def step(self, action):
+  def step(self, action, image, last_thought):
+
     # TODO: first step obs does not have question. 
-    obs, _, done, info = self.env.step(action)
+    obs, _, done, info = self.env.step(action, image, last_thought)
     reward = self.get_reward(info)
     if done:
       obs = f"Episode finished, reward = {reward}\n"
@@ -197,6 +198,75 @@ class HotPotQAWrapperImage(gym.Wrapper):
   
   def __len__(self):
     return len(self.data)
+
+
+class AOKVQAWrapper(gym.Wrapper):
+  def __init__(self, env, split):
+    super().__init__(env)
+    data_file = f"{DATA_DIR}/{HOTPOTQA_SPLIT_FILE[split]}"
+    self.data = json.load(open(data_file))
+    self.data = [(d['question'], d['answer'], d['context'], d['direct_answers']) for d in self.data]
+    self.data_idx = 0
+    self.split = split
+
+  def reset(self, seed=None, return_info=False, options=None, idx=None):
+    self.env.reset(seed=seed, return_info=return_info, options=options)
+    try:
+      self.env.step('')
+    except:
+      pass
+    self.env.reset(seed=seed, return_info=return_info, options=options)
+    self.data_idx = int(np.random.randint(len(self.data))) if idx is None else idx
+    observation = f"Question: {self.data[self.data_idx][0]}"
+    info = self._get_info()
+    return (observation, info) if return_info else observation
+
+  def _get_info(self):
+    return {
+      "steps": self.steps, 
+      "question": self.data[self.data_idx][0],
+      "answer": self.data[self.data_idx][1],
+      "image": self.data[self.data_idx][2],
+      "direct_answers": list(self.data[self.data_idx][3]),
+      "hotpot_split": self.split
+    }
+
+  def get_reward(self, info):
+    if info['answer'] is not None:
+      pred = normalize_answer(self.data[self.data_idx][1])
+      gt = normalize_answer(info['answer'])
+      score = (pred == gt)
+      return int(score)
+    return 0
+  
+  def get_metrics(self, info):
+    if info['answer'] is not None:
+      pred = normalize_answer(self.data[self.data_idx][1])
+      gt = normalize_answer(info['answer'])
+      em = (pred == gt)
+      almost_em = 0
+      
+      for da in ast.literal_eval(self.data[self.data_idx][3]):
+        if gt == normalize_answer(da):
+          almost_em = 1
+          break
+      f1 = f1_score(pred, gt)[0]
+      return {'reward': em, 'em': em, 'almost_em': almost_em, 'f1': f1}
+    return {'reward': 0, 'em': 0, 'almost_em': 0, 'f1': 0}
+
+  def step(self, action, image, last_thought):
+    # TODO: first step obs does not have question. 
+    obs, _, done, info = self.env.step(action, image, last_thought)
+    reward = self.get_reward(info)
+    if done:
+      obs = f"Episode finished, reward = {reward}\n"
+      info.update({"gt_answer": self.data[self.data_idx][1], "question_idx": self.data_idx, "direct_answers": self.data[self.data_idx][3]})
+      info.update(self.get_metrics(info))
+    return obs, reward, done, info
+  
+  def __len__(self):
+    return len(self.data)
+
 
 class FeverWrapper(gym.Wrapper):
   def __init__(self, env, split):

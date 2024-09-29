@@ -4,7 +4,8 @@ import time
 import gym
 import requests
 from bs4 import BeautifulSoup
-
+import os
+import openai
 # import wikipedia
 
 def clean_str(p):
@@ -34,6 +35,8 @@ class WikiEnv(gym.Env):
     self.observation_space = self.action_space = textSpace()
     self.search_time = 0
     self.num_searches = 0
+    self.client = openai.Client(api_key=os.environ.get("OPENAI_API_KEY"))
+
     
   def _get_obs(self):
     return self.obs
@@ -56,6 +59,35 @@ class WikiEnv(gym.Env):
     info = self._get_info()
     return (observation, info) if return_info else observation
 
+  def llm_image_call(self, image, prompt):
+    response = self.client.chat.completions.create(
+    model="gpt-4o",
+    messages= [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": f'{prompt}'
+          },
+          {
+            "type": "image_url",
+            "image_url": {
+              "url": f"data:image/jpeg;base64,{image}"
+            }
+          }
+        ]
+      }
+    ],
+    temperature=0,
+    max_tokens=1024,
+    top_p=1,
+    frequency_penalty=0.0,
+    presence_penalty=0.0,
+    # stop=["\n"]
+    )
+    return response.choices[0].message.content
+
   def construct_lookup_list(self, keyword):
     # find all paragraphs
     if self.page is None:
@@ -74,17 +106,6 @@ class WikiEnv(gym.Env):
     return parts
 
   @staticmethod
-  def get_page_obs(page):
-    # find all paragraphs
-    paragraphs = page.split("\n")
-    paragraphs = [p.strip() for p in paragraphs if p.strip()]
-
-    # find all sentence
-    sentences = []
-    for p in paragraphs:
-      sentences += p.split('. ')
-    sentences = [s.strip() + '.' for s in sentences if s.strip()]
-    return ' '.join(sentences[:5])
 
     # ps = page.split("\n")
     # ret = ps[0]
@@ -121,7 +142,7 @@ class WikiEnv(gym.Env):
         self.obs = self.get_page_obs(self.page)
         self.lookup_keyword = self.lookup_list = self.lookup_cnt = None
   
-  def step(self, action):
+  def step(self, action, image_data=None, last_thought=None):
     reward = 0
     done = False
     action = action.strip()
@@ -133,7 +154,7 @@ class WikiEnv(gym.Env):
       entity = action[len("search["):-1]
       # entity_ = entity.replace(" ", "_")
       # search_url = f"https://en.wikipedia.org/wiki/{entity_}"
-      self.search_step(entity)
+      self.search_step(self,entity)
     elif action.startswith("lookup[") and action.endswith("]"):
       keyword = action[len("lookup["):-1]
       if self.lookup_keyword != keyword:  # reset lookup
@@ -152,6 +173,8 @@ class WikiEnv(gym.Env):
       self.obs = f"Episode finished, reward = {reward}\n"
     elif action.startswith("think[") and action.endswith("]"):
       self.obs = "Nice thought."
+    elif action.startswith("imageObserve[") and action.endswith("]"):
+      self.obs = self.llm_image_call(image=image_data, prompt=last_thought)
     else:
       self.obs = "Invalid action: {}".format(action)
 
