@@ -22,7 +22,7 @@ from prompts.instructions import *
 # Define LLM functions
 def llm(prompt, stop=["\n"]):
     response = client.chat.completions.create(
-      model="gpt-4o",
+      model="gpt-4o-mini",
       messages=[
         {
             "role": "user",
@@ -120,8 +120,8 @@ def webthink(idx=None, prompt=webthink_prompt, to_print=True, image_dataset=True
 
 #%%
 # Run webthink on multiple indices
-idxs = list(range(5))
-random.Random(82).shuffle(idxs)
+idxs = list(range(93))
+random.Random(124).shuffle(idxs)
 
 rs = []
 infos = []
