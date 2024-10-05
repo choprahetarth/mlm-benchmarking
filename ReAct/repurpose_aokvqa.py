@@ -66,15 +66,15 @@ hotpotqa_dataset = dataset.map(transform_to_hotpotqa, remove_columns=['image','q
 print(json.dumps(next(iter(hotpotqa_dataset)), indent=1))
 
 # %%
-# Take 30 samples from the transformed dataset
+# Take 100 samples from the transformed dataset
 samples = list(hotpotqa_dataset.take(100))
 
 # Save the samples as a JSON file
-with open('./data/aokvqa_repurposed.json', 'w') as f:
+with open('./data/aokvqa_repurposed_train.json', 'w') as f:
     json.dump(samples, f, indent=1)
 
 # %%
-
+# This code is for going through all samples of the validation dataset for annotating the few-shot samples
 import pandas as pd
 from openpyxl import Workbook, load_workbook
 from openpyxl.drawing.image import Image
@@ -83,7 +83,7 @@ import random
 from datasets import load_dataset
 
 
-# Load the dataset with val split and take 25 random samples
+# Load the dataset with the validation dataset for annotation
 dataset = load_dataset("HuggingFaceM4/A-OKVQA", split='validation', trust_remote_code=True, streaming=True)
 dataset = dataset.shuffle(seed=12)  # Shuffle the dataset
 val_dataset = dataset.map(transform_to_hotpotqa, remove_columns=['image','question_id', 'rationales', 'difficult_direct_answer', 'correct_choice_idx', 'choices'])
