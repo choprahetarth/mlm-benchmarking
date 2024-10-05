@@ -106,7 +106,17 @@ class WikiEnv(gym.Env):
     return parts
 
   @staticmethod
+  def get_page_obs(page):
+    # find all paragraphs
+    paragraphs = page.split("\n")
+    paragraphs = [p.strip() for p in paragraphs if p.strip()]
 
+    # find all sentence
+    sentences = []
+    for p in paragraphs:
+      sentences += p.split('. ')
+    sentences = [s.strip() + '.' for s in sentences if s.strip()]
+    return ' '.join(sentences[:5])
     # ps = page.split("\n")
     # ret = ps[0]
     # for i in range(1, len(ps)):
@@ -154,7 +164,7 @@ class WikiEnv(gym.Env):
       entity = action[len("search["):-1]
       # entity_ = entity.replace(" ", "_")
       # search_url = f"https://en.wikipedia.org/wiki/{entity_}"
-      self.search_step(self,entity)
+      self.search_step(entity)
     elif action.startswith("lookup[") and action.endswith("]"):
       keyword = action[len("lookup["):-1]
       if self.lookup_keyword != keyword:  # reset lookup
