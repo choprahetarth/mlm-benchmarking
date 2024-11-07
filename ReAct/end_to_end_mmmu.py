@@ -43,8 +43,11 @@ def llm(prompt, stop=["\n"]):
 # Define environment and wrappers
 env = wikienv.WikiEnv()
 # env = wrappers.AOKVQAWrapper(env, split="repurposed_train")
-# env = wrappers. MMLUWrapper(env, split="repurposed_mmlu_train")
-env = wrappers.AOKVQAWrapper(env, split="repurposed_validation")
+# env = wrappers. MMMUWrapper(env, split="repurposed_mmmu_val_art")
+env = wrappers. MMMUWrapper(env, split="repurposed_mmmu_val_basic_medical_science")
+# env = wrappers. MMMUWrapper(env, split="repurposed_mmmu_val_biology")
+# env = wrappers. MMMUWrapper(env, split="repurposed_mmmu_val_agriculture")
+# env = wrappers.AOKVQAWrapper(env, split="repurposed_validation")
 # env = wrappers.HotPotQAWrapperImage(env, split="repurposed")
 # env = wrappers.HotPotQAWrapper(env, split="dev")
 # env = wrappers.LoggingWrapper(env)
@@ -64,23 +67,28 @@ prompt_file = 'prompts_naive.json'
 with open(folder + prompt_file, 'r') as f:
     prompt_dict = json.load(f)
 
-webthink_examples = prompt_dict['aokvqa_human_annotated_train']
+webthink_examples = prompt_dict['mmmu_train_annotated_basic_medical_science']
 webthink_prompt = single_answer_image_cleaned + webthink_examples
 
 #%%
 # Define webthink function
 def webthink(idx=None, prompt=webthink_prompt, to_print=True, image_dataset=True):
     (question, info) = env.reset(idx=idx, return_info=True)
-    image = info['image']
+    images = info['images']
+    choices=""
+    for i in info['choices']:
+        choices+=i+" , "
     if to_print:
         print(idx, question)
     prompt += question + "\n"
+    prompt += ". Please select an answer ONLY from the following choices - " + choices + "\n"
     traj = ""
     n_calls, n_badcalls = 0, 0
     logs = []
     for i in range(1, 8):
         n_calls += 1
         if i==1 and image_dataset==True:
+            print("Choices = ", choices)
             print("Image Processed")
             # image_pic = Image.open(io.BytesIO(base64.b64decode(image)))
             # plt.imshow(image_pic)
@@ -93,7 +101,7 @@ def webthink(idx=None, prompt=webthink_prompt, to_print=True, image_dataset=True
             n_calls += 1
             thought = thought_action.strip().split('\n')[0]
             action = llm(prompt + f"Thought {i}: {thought}\nAction {i}:", stop=[f"\n"]).strip()
-        obs, r, done, info = step(env, action = str(action[0].lower() + action[1:]), image=image, last_thought=thought)
+        obs, r, done, info = step(env, action = str(action[0].lower() + action[1:]), image=images, last_thought=thought)
         obs = obs.replace('\\n', '')
         step_str = f"Thought {i}: {thought}\nAction {i}: {action}\nObservation {i}: {obs}\n"
         prompt += step_str
@@ -103,29 +111,32 @@ def webthink(idx=None, prompt=webthink_prompt, to_print=True, image_dataset=True
         if done:
             break
     if not done:
-        obs, r, done, info = step(env, "finish[]",  image=image, last_thought=thought)
+        obs, r, done, info = step(env, "finish[]",  image=images, last_thought=thought)
 
     info.update({'n_calls': n_calls, 'n_badcalls': n_badcalls, 'traj': prompt})
     logs.append({
         'question': question,
-        'answer': info['answer'],
-        'gt_answer':info['gt_answer'],
+        'answer': info.get('answer', ''),
+        'gt_answer':info.get('gt_answer', ''),
         'reward': r,
         'n_calls': n_calls,
         'n_badcalls': n_badcalls,
-        'almost_em': info['almost_em'],
-        'f1': info['f1'],
-        'em':info['em'],
+        # 'almost_em': info.get('almost_em', ''), #uncomment this for AOKVQA
+        'choices' : info.get('choices',''),
+        'f1': info.get('f1', ''),
+        'em':info.get('em', ''),
         'trajectory':traj,
-        'direct_answers': info['direct_answers'] if info['direct_answers'] else 0,
-        'image': image,
+        'direct_answers': info.get('direct_answers', 0),
+        'images': info.get('images', []),
     })
     return r, info, logs
 
 #%%
 # Run webthink on multiple indices
-idxs = list(range(1143))
+idxs = list(range(30))
 random.Random(124).shuffle(idxs)
+
+
 
 rs = []
 infos = []
@@ -185,7 +196,7 @@ for row, (_, row_data) in enumerate(df.iterrows()):
 
 
 # Save the Excel file
-# wb.save("aokvqa_validation_full_results.xlsx")
+wb.save("MMMU_BASIC_MEDICAL_SCIENCE_VALIDATION_RESULTS_MCQ.xlsx")
 
 
 #%%

@@ -13,7 +13,13 @@ HOTPOTQA_SPLIT_FILE = {
   "train": "hotpot_train_v1.1_simplified.json",
   "dev": "hotpot_dev_v1_simplified.json",
   "test": "hotpot_test_v1_simplified.json",
-  "repurposed": "aokvqa_repurposed_train.json"
+  "repurposed_train": "aokvqa_repurposed_train.json",
+  "repurposed_validation": "aokvqa_repurposed_validation_full.json",
+  "repurposed_mmlu_train": "mmlu_repurposed_train_small.json",
+  "repurposed_mmmu_val_art": "mmmu_repurposed_val_art.json",
+  "repurposed_mmmu_val_basic_medical_science": "mmmu_repurposed_val_basic_medical_science.json",
+  "repurposed_mmmu_val_biology" : "mmmu_repurposed_val_biology.json",
+  "repurposed_mmmu_val_agriculture":"mmmu_repurposed_val_agriculture.json" 
 }
 
 FEVER_SPLIT_FILE = {
@@ -53,7 +59,10 @@ def normalize_answer(s):
       return "".join(ch for ch in text if ch not in exclude)
 
   def lower(text):
-      return text.lower()
+      if text: 
+        return text.lower()
+      else :
+        return "None"
 
   return white_space_fix(remove_articles(remove_punc(lower(s))))
 
@@ -267,6 +276,74 @@ class AOKVQAWrapper(gym.Wrapper):
   def __len__(self):
     return len(self.data)
 
+class MMMUWrapper(gym.Wrapper):
+  def __init__(self, env, split):
+    super().__init__(env)
+    data_file = f"{DATA_DIR}/{HOTPOTQA_SPLIT_FILE[split]}"
+    self.data = json.load(open(data_file))
+    self.data = [(d['question'], d['answer'], d['choices'], d['images'], d['config_name'], d['level'], d['type']) for d in self.data]
+    self.data_idx = 0
+    self.split = split
+
+  def reset(self, seed=None, return_info=False, options=None, idx=None):
+    self.env.reset(seed=seed, return_info=return_info, options=options)
+    try:
+      self.env.step('')
+    except:
+      pass
+    self.env.reset(seed=seed, return_info=return_info, options=options)
+    self.data_idx = int(np.random.randint(len(self.data))) if idx is None else idx
+    observation = f"Question: {self.data[self.data_idx][0]}"
+    info = self._get_info()
+    return (observation, info) if return_info else observation
+
+  def _get_info(self):
+    return {
+      "steps": self.steps, 
+      "question": self.data[self.data_idx][0],
+      "answer": self.data[self.data_idx][1],
+      "choices": self.data[self.data_idx][2],
+      "images": self.data[self.data_idx][3], 
+      "config_name": self.data[self.data_idx][4],
+      "level":self.data[self.data_idx][5],
+      "type":self.data[self.data_idx][6]
+      # "direct_answers": list(self.data[self.data_idx][3]),
+      # "hotpot_split": self.split
+    }
+
+  def get_reward(self, info):
+    if info['answer'] is not None:
+      pred = normalize_answer(self.data[self.data_idx][1])
+      gt = normalize_answer(info['answer'])
+      score = (pred == gt)
+      return int(score)
+    return 0
+  
+  def get_metrics(self, info):
+    if info['answer'] is not None:
+      pred = normalize_answer(self.data[self.data_idx][1])
+      gt = normalize_answer(info['answer'])
+      em = (pred == gt)      
+      # for da in ast.literal_eval(self.data[self.data_idx][3]):
+        # if gt == normalize_answer(da):
+          # almost_em = 1
+          # break
+      f1 = f1_score(pred, gt)[0]
+      return {'reward': em, 'em': em, 'f1': f1}
+    return {'reward': 0, 'em': 0, 'f1': 0}
+
+  def step(self, action, image, last_thought):
+    # TODO: first step obs does not have question. 
+    obs, _, done, info = self.env.step(action, image, last_thought)
+    reward = self.get_reward(info)
+    if done:
+      obs = f"Episode finished, reward = {reward}\n"
+      info.update({"gt_answer": self.data[self.data_idx][1], "question_idx": self.data_idx, "direct_answers": self.data[self.data_idx][3]})
+      info.update(self.get_metrics(info))
+    return obs, reward, done, info
+  
+  def __len__(self):
+    return len(self.data)
 
 class FeverWrapper(gym.Wrapper):
   def __init__(self, env, split):

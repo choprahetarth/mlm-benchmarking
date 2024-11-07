@@ -59,32 +59,84 @@ class WikiEnv(gym.Env):
     info = self._get_info()
     return (observation, info) if return_info else observation
 
+  # def llm_image_call(self, image, prompt):
+  #   response = self.client.chat.completions.create(
+  #   model="gpt-4o",
+  #   messages= [
+  #     {
+  #       "role": "user",
+  #       "content": [
+  #         {
+  #           "type": "text",
+  #           "text": f'{prompt}'
+  #         },
+  #         {
+  #           "type": "image_url",
+  #           "image_url": {
+  #             "url": f"data:image/jpeg;base64,{image}"
+  #           }
+  #         }
+  #       ]
+  #     }
+  #   ],
+  #   temperature=0,
+  #   max_tokens=1024,
+  #   top_p=1,
+  #   frequency_penalty=0.0,
+  #   presence_penalty=0.0,
+  #   # stop=["\n"]
+  #   )
+  #   return response.choices[0].message.content
+
   def llm_image_call(self, image, prompt):
-    response = self.client.chat.completions.create(
-    model="gpt-4o",
-    messages= [
-      {
-        "role": "user",
-        "content": [
-          {
-            "type": "text",
-            "text": f'{prompt}'
-          },
-          {
-            "type": "image_url",
-            "image_url": {
-              "url": f"data:image/jpeg;base64,{image}"
+    if isinstance(image, list):
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f'{prompt}'
+                    },
+                ]
             }
-          }
         ]
-      }
-    ],
-    temperature=0,
-    max_tokens=1024,
-    top_p=1,
-    frequency_penalty=0.0,
-    presence_penalty=0.0,
-    # stop=["\n"]
+        for img in image:
+            messages[0]["content"].append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{img}"
+                    }
+                }
+            )
+    else:
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f'{prompt}'
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{image}"
+                        }
+                    }
+                ]
+            }
+        ]
+    response = self.client.chat.completions.create(
+        model="gpt-4o",
+        messages=messages,
+        temperature=0,
+        max_tokens=1024,
+        top_p=1,
+        frequency_penalty=0.0,
+        presence_penalty=0.0,
+        # stop=["\n"]
     )
     return response.choices[0].message.content
 
