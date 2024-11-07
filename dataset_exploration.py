@@ -68,7 +68,7 @@ import json
 import numpy as np
 import base64
 
-dataset = load_dataset("HuggingFaceM4/A-OKVQA", split='train', trust_remote_code=True, streaming=True)
+dataset = load_dataset("HuggingFaceM4/A-OKVQA", split='validation', trust_remote_code=True, streaming=True)
 
 def transform_to_hotpotqa(example):
     """
@@ -125,6 +125,202 @@ hotpotqa_dataset = dataset.map(transform_to_hotpotqa, remove_columns=['image','q
 # Print the first example of the transformed dataset
 import json
 print(json.dumps(next(iter(hotpotqa_dataset)), indent=1))
+
+#%%
+from datasets import load_dataset
+import json
+import base64
+from datasets import get_dataset_config_names
+import ast
+from io import BytesIO
+
+# List all available configurations for the dataset
+configs = get_dataset_config_names('MMMU/MMMU')
+print("Available configs:", configs)
+
+def transform_to_hotpotqa_with_multiple_images(example):
+    # Extract relevant information
+    question_id = example['id']
+
+    # Initialize question_text and question_image
+    question_text = ''
+    question_image = ''
+
+    # Get the question
+    question = example['question']
+    if isinstance(question, str):
+        question_text = question
+    else:
+        # If question is an image, encode it to base64
+        buffered = BytesIO()
+        question.save(buffered, format='PNG')
+        question_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+        question_image = question_base64
+
+    # Parse the options from string to a list
+    options_field = example['options']
+    options = []
+    if isinstance(options_field, str):
+        options = ast.literal_eval(options_field)
+    elif isinstance(options_field, list):
+        options = options_field
+    else:
+        # If options_field is an image or other type, handle accordingly
+        buffered = BytesIO()
+        options_field.save(buffered, format='PNG')
+        options_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+        options = [options_base64]
+
+    # Map answer letters to indices dynamically
+    answer_letter = example['answer'].strip().upper()
+    import string
+    option_letters = list(string.ascii_uppercase)
+    letter_to_index = {letter: idx for idx, letter in enumerate(option_letters)}
+
+    correct_choice_idx = letter_to_index.get(answer_letter, None)
+    if correct_choice_idx is None or correct_choice_idx >= len(options):
+        correct_choice_idx = None  # Handle invalid or out-of-range indices
+
+    # Get the explanation or rationale
+    rationales_field = example.get('explanation', '')
+    rationales = ''
+    if isinstance(rationales_field, str):
+        rationales = rationales_field
+    elif rationales_field is not None:
+        # If rationales_field is an image, encode it
+        buffered = BytesIO()
+        rationales_field.save(buffered, format='PNG')
+        rationales_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+        rationales = rationales_base64
+
+    # Collect all non-None images into a list and encode them as base64 strings
+    images = []
+    for i in range(1, 8):
+        img_key = f'image_{i}'
+        img = example.get(img_key, None)
+        if img is not None:
+            buffered = BytesIO()
+            img.save(buffered, format='PNG')
+            img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+            images.append(img_base64)
+
+    # Construct the HotpotQA-formatted example
+    hotpotqa_example = {
+        'id': question_id,
+        'question': question_text,
+        'question_image': question_image,
+        'choices': options,
+        'answer': options[correct_choice_idx] if correct_choice_idx is not None else None,
+        'type': example.get('question_type', ''),
+        'level': example.get('topic_difficulty', 'medium'),
+        'explanation': rationales,
+        'images': images  # List of base64-encoded image strings
+    }
+
+    return hotpotqa_example
+
+
+# for i in configs:
+#     dataset = load_dataset("MMMU/MMMU", i, split='dev', trust_remote_code=True, streaming=True)
+#     # example = next(iter(dataset))
+#     # transformed_example = transform_to_hotpotqa_with_multiple_images(example)
+#     # Apply the transformation to the dataset and remove the 'image' column
+#     transformed_dataset = dataset.map(transform_to_hotpotqa_with_multiple_images, remove_columns=['question_image','id', 'supporting_facts'])
+#     print(json.dumps(next(iter(transformed_dataset)), indent=1))  
+#     break  # Remove this break if you want to process all configs
+
+fields_to_remove = ['question_image', 'id', 'supporting_facts']
+
+all_transformed_examples = []
+
+# for i in configs:
+dataset = load_dataset("MMMU/MMMU", "Basic_Medical_Science", split='validation', trust_remote_code=True, streaming=True)
+example_count = 0
+for example in dataset:
+    transformed_example = transform_to_hotpotqa_with_multiple_images(example)
+    # Remove specified fields
+    for field in fields_to_remove:
+        transformed_example.pop(field, None)
+    # Add the config name as a field in the final JSON
+    transformed_example['config_name'] = "Basic Medical Science"
+    # Append the transformed example to the list
+    all_transformed_examples.append(transformed_example)
+    example_count += 1
+        # if example_count >= 5:
+            # break  # Take only two samples from each config
+    # Continue to the next config without breaking
+
+# Save the collected transformed examples to a JSON file
+with open('mmmu_repurposed_val_basic_medical_science.json', 'w') as f:
+    json.dump(all_transformed_examples, f, indent=2)
+
+# print(f"Saved {len(all_transformed_examples)} examples to 'transformed_data.json'")
+
+#%%
+import pandas as pd
+import base64
+from openpyxl import Workbook
+from openpyxl.drawing.image import Image
+from io import BytesIO
+
+# Create a DataFrame from the logs
+df = pd.DataFrame(all_transformed_examples)
+# Convert the 'choices' column from list to string
+df['choices'] = df['choices'].apply(lambda x: ', '.join(map(str, x)))
+
+
+# Create an Excel workbook and remove the default sheet
+wb = Workbook()
+wb.remove(wb.active)
+
+# For each unique config_name, create a new sheet and write data
+for config_name in df['config_name'].unique():
+    # Create a new sheet with the config_name
+    ws = wb.create_sheet(title=config_name)
+    
+    # Filter the dataframe for the current config_name
+    df_config = df[df['config_name'] == config_name].reset_index(drop=True)
+    
+    # Remove the 'config_name' column
+    df_config = df_config.drop(columns=['config_name'])
+    
+    # Write the header
+    for col_idx, header in enumerate(df_config.columns):
+        ws.cell(row=1, column=col_idx + 1, value=header)
+    
+    # Write the data
+    for row_idx, row_data in df_config.iterrows():
+        for col_idx, value in enumerate(row_data):
+            column_name = df_config.columns[col_idx]
+            if column_name == 'images':  # Check if the column is 'images'
+                # Check if image_data is a list
+                if isinstance(value, list):
+                    # Decode each image in the list and save them in the next columns
+                    for i, img_data in enumerate(value):
+                        image_stream = BytesIO(base64.b64decode(img_data))
+                        img = Image(image_stream)
+                        aspect_ratio = img.height / img.width
+                        img.width = 250
+                        img.height = int(250 * aspect_ratio)
+                        # Adjust the column index for multiple images
+                        img_col = col_idx + 1 + i
+                        ws.add_image(img, ws.cell(row=row_idx + 2, column=img_col).coordinate)
+                else:
+                    # Decode the base64 string and save it as an image
+                    image_data = base64.b64decode(value)
+                    image_stream = BytesIO(image_data)
+                    img = Image(image_stream)
+                    aspect_ratio = img.height / img.width
+                    img.width = 250
+                    img.height = int(250 * aspect_ratio)
+                    ws.add_image(img, ws.cell(row=row_idx + 2, column=col_idx + 1).coordinate)
+            else:
+                if not isinstance(value, list):  # Ensure the value is not a list
+                    ws.cell(row=row_idx + 2, column=col_idx + 1, value=str(value))
+
+# Save the workbook
+wb.save('output.xlsx')
+
 
 
 
