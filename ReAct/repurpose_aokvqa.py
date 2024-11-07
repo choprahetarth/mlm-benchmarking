@@ -7,7 +7,7 @@ import json
 import numpy as np
 import base64
 
-dataset = load_dataset("HuggingFaceM4/A-OKVQA", split='train', trust_remote_code=True, streaming=True)
+dataset = load_dataset("HuggingFaceM4/A-OKVQA", split='validation', trust_remote_code=True, streaming=True)
 #%%
 
 def transform_to_hotpotqa(example):
@@ -67,10 +67,11 @@ print(json.dumps(next(iter(hotpotqa_dataset)), indent=1))
 
 # %%
 # Take 100 samples from the transformed dataset
-samples = list(hotpotqa_dataset.take(100))
+samples = list(hotpotqa_dataset.take(1145))
+# %%
 
 # Save the samples as a JSON file
-with open('./data/aokvqa_repurposed_train.json', 'w') as f:
+with open('./data/aokvqa_repurposed_validation_full.json', 'w') as f:
     json.dump(samples, f, indent=1)
 
 # %%
@@ -84,13 +85,17 @@ from datasets import load_dataset
 
 
 # Load the dataset with the validation dataset for annotation
-dataset = load_dataset("HuggingFaceM4/A-OKVQA", split='validation', trust_remote_code=True, streaming=True)
-dataset = dataset.shuffle(seed=12)  # Shuffle the dataset
+dataset = load_dataset("HuggingFaceM4/A-OKVQA", split='train', trust_remote_code=True, streaming=True)
+print("dataset added")
+dataset = dataset.shuffle(seed=128)  # Shuffle the dataset
+print("dataset loaded")
 val_dataset = dataset.map(transform_to_hotpotqa, remove_columns=['image','question_id', 'rationales', 'difficult_direct_answer', 'correct_choice_idx', 'choices'])
 val_samples = list(val_dataset.take(25))
+print("take all samples")
 
 # Create a DataFrame from the samples
 df = pd.DataFrame(val_samples)
+print("created a DB")
 
 # Create an Excel file
 wb = Workbook()
@@ -119,6 +124,6 @@ for row, (_, row_data) in enumerate(df.iterrows()):
             ws.cell(row=row + 2, column=col + 1, value=value)
 
 # Save the Excel file
-wb.save("output_val.xlsx")
+wb.save("train_for_annotations.xlsx")
 
 # %%
