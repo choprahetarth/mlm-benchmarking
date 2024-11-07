@@ -2,3 +2,5 @@ __pycache__/
 ReAct/__pycache__/
 *.pyc
 ReAct/data
+ReAct/results
+MMMU_for_annotation* 
